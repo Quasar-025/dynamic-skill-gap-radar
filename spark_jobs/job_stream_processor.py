@@ -26,7 +26,13 @@ except ImportError:
 
 spark = SparkSession.builder \
     .appName("JobStreamProcessor") \
+    .config(
+    "spark.jars.packages",
+    "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1"
+) \
     .getOrCreate()
+
+spark.sparkContext.setLogLevel("WARN")
 
 spark.sparkContext.setLogLevel("WARN")
 
@@ -50,8 +56,7 @@ def send_to_dashboard(batch_df, batch_id):
     """Process batch and send skill counts to dashboard"""
     global current_skill_demand
     
-    print(f"\n=== Processing batch {batch_id} ===\")
-    
+    print(f"\n=== Processing batch {batch_id} ===")    
     if batch_df.isEmpty():
         print("Empty batch, skipping...")
         return

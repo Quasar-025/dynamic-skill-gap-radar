@@ -33,6 +33,39 @@
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .filters {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 10px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            align-items: end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .filter-group label {
+            font-size: 12px;
+            color: #555;
+            font-weight: 600;
+        }
+        .filter-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .refresh-btn {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            color: white;
+            font-weight: 600;
+            background: #1f8ef1;
+        }
         .status {
             text-align: center;
             padding: 10px;
@@ -223,6 +256,9 @@
             .stats-grid {
                 grid-template-columns: 1fr;
             }
+            .filters {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -234,6 +270,27 @@
         <div class="container">
             <h2>📊 Real-Time Job Market Demand</h2>
             <div id="status" class="status disconnected">Connecting to server...</div>
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="roleFilter">Target Role</label>
+                    <select id="roleFilter">
+                        <option value="">All Roles</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="companyFilter">Target Company</label>
+                    <select id="companyFilter">
+                        <option value="">All Companies</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="regionFilter">Region</label>
+                    <select id="regionFilter">
+                        <option value="">All Regions</option>
+                    </select>
+                </div>
+                <button id="refreshFiltersBtn" class="refresh-btn">Apply</button>
+            </div>
             <canvas id="skillsChart"></canvas>
         </div>
         
@@ -308,6 +365,10 @@
         const fileNameSpan = document.getElementById('fileName');
         const messageContainer = document.getElementById('messageContainer');
         const resultsSection = document.getElementById('resultsSection');
+        const roleFilter = document.getElementById('roleFilter');
+        const companyFilter = document.getElementById('companyFilter');
+        const regionFilter = document.getElementById('regionFilter');
+        const refreshFiltersBtn = document.getElementById('refreshFiltersBtn');
         
         let extractedSkills = [];
 
@@ -346,14 +407,11 @@
             }
         });
 
-        // Load initial data from REST endpoint
-        fetch('/data')
-            .then(response => response.json())
-            .then(data => {
-                console.log('Initial data loaded:', data);
-                updateChart(data);
-            })
-            .catch(error => console.error('Error loading initial data:', error));
+        loadMarketContext();
+        loadSkillDemand();
+
+        // Keep data fresh even if websocket payload does not match current filters.
+        setInterval(loadSkillDemand, 120000);
 
         // Connect to WebSocket for live updates
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
@@ -369,7 +427,9 @@
             
             try {
                 const data = JSON.parse(event.data);
-                updateChart(data);
+                if (!roleFilter.value && !companyFilter.value && !regionFilter.value) {
+                    updateChart(data);
+                }
             } catch (e) {
                 console.error('Error parsing message:', e);
             }
@@ -399,6 +459,58 @@
                 chart.update();
             }
         }
+
+        async function loadMarketContext() {
+            try {
+                const response = await fetch('/api/market_context');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                populateSelect(roleFilter, data.roles || [], 'All Roles');
+                populateSelect(companyFilter, data.companies || [], 'All Companies');
+                populateSelect(regionFilter, data.regions || [], 'All Regions');
+            } catch (error) {
+                console.error('Error loading context:', error);
+            }
+        }
+
+        function populateSelect(select, values, placeholder) {
+            const previous = select.value;
+            select.innerHTML = `<option value="">${placeholder}</option>`;
+            values.forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                select.appendChild(option);
+            });
+
+            if (previous) {
+                select.value = previous;
+            }
+        }
+
+        async function loadSkillDemand() {
+            try {
+                const params = new URLSearchParams();
+                if (roleFilter.value) params.set('role', roleFilter.value);
+                if (companyFilter.value) params.set('company', companyFilter.value);
+                if (regionFilter.value) params.set('region', regionFilter.value);
+                params.set('top_n', '10');
+
+                const response = await fetch(`/api/skill_demand?${params.toString()}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                updateChart(data);
+            } catch (error) {
+                console.error('Error loading skill demand:', error);
+            }
+        }
+
+        refreshFiltersBtn.addEventListener('click', () => {
+            loadSkillDemand();
+            showMessage('Updated market demand view with selected filters.', 'success');
+        });
         
         // Resume upload functionality
         resumeFileInput.addEventListener('change', function(e) {
@@ -466,7 +578,11 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        resume_skills: resumeSkills
+                        resume_skills: resumeSkills,
+                        role: roleFilter.value || null,
+                        company: companyFilter.value || null,
+                        region: regionFilter.value || null,
+                        top_n: 30
                     })
                 });
                 

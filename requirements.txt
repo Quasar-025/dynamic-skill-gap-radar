@@ -16,6 +16,9 @@ python-docx
 # Web
 aiofiles
 requests
+beautifulsoup4
+lxml
+pyarrow
 
 # Optional for enhanced skill extraction
 # spacy

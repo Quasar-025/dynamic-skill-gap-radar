@@ -1,14 +1,26 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Data
 data/raw/
 data/processed/
+data/hive/
 
 # Spark temp files
 *.log
+spark-warehouse/
+
+# Hive / Derby metastore artifacts
+metastore_db/
+derby.log
+
+# Local env files
+.env
+.env.*
 
 # OS
 .DS_Store
