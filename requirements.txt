@@ -1,0 +1,22 @@
+# Core dependencies
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+
+# Data processing
+pandas
+pyspark
+kafka-python
+
+# Resume parsing
+PyPDF2
+python-docx
+
+# Web
+aiofiles
+requests
+
+# Optional for enhanced skill extraction
+# spacy
+# transformers
