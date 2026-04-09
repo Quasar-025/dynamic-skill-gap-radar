@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def analyze_gap(
     resume_skills: List[str],
     market_demand: Dict[str, int],
-    top_n_recommendations: int = 10
+    top_n_recommendations: int = 20
 ) -> Dict:
     """
     Analyze skill gap between resume and market demand
@@ -85,9 +85,11 @@ def analyze_gap(
         top_n=top_n_recommendations
     )
     
+    missing_limit = max(20, top_n_recommendations * 2)
+
     return {
         "matching_skills": matching_skills,
-        "missing_skills": missing_skills[:20],  # Limit to top 20 missing
+        "missing_skills": missing_skills[:missing_limit],
         "skill_score": skill_score,
         "recommendations": recommendations,
         "resume_skill_count": len(resume_skills),

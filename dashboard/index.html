@@ -35,7 +35,7 @@
         }
         .filters {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr auto;
+            grid-template-columns: 1fr 1fr 1fr 140px auto;
             gap: 10px;
             margin-top: 15px;
             margin-bottom: 10px;
@@ -82,7 +82,33 @@
             color: #721c24;
         }
         #skillsChart {
-            max-height: 400px;
+            max-height: 320px;
+        }
+        #topJobsChart {
+            max-height: 280px;
+        }
+        .subtle-note {
+            margin: 8px 0 14px;
+            color: #666;
+            font-size: 13px;
+        }
+        .model-note {
+            margin: 10px 0;
+            background: #f2f8ff;
+            border: 1px solid #d7e8ff;
+            color: #234;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .chart-block {
+            margin-top: 14px;
+        }
+        .chart-title {
+            font-size: 14px;
+            color: #334;
+            font-weight: 700;
+            margin-bottom: 8px;
         }
         
         /* Resume Upload Section */
@@ -263,7 +289,7 @@
     </style>
 </head>
 <body>
-    <h1>🎯 Skill Gap Radar - Live Job Market Analysis</h1>
+    <h1>🎯 Skill Gap Radar - Live Job Market Analysis, add multilanguage and more models</h1>
     
     <div class="main-container">
         <!-- Left Column: Real-time Job Market -->
@@ -289,9 +315,26 @@
                         <option value="">All Regions</option>
                     </select>
                 </div>
+                <div class="filter-group">
+                    <label for="skillCountFilter">Skills Shown</label>
+                    <select id="skillCountFilter">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
                 <button id="refreshFiltersBtn" class="refresh-btn">Apply</button>
             </div>
-            <canvas id="skillsChart"></canvas>
+            <div class="subtle-note" id="filterHint">Filters are linked. Choosing a region updates available roles and companies.</div>
+            <div class="chart-block">
+                <div class="chart-title">Top Skills in Selected Market</div>
+                <canvas id="skillsChart"></canvas>
+            </div>
+            <div class="chart-block">
+                <div class="chart-title">Top Job Titles in Selected Region</div>
+                <canvas id="topJobsChart"></canvas>
+            </div>
         </div>
         
         <!-- Right Column: Resume Analysis -->
@@ -313,6 +356,7 @@
             </div>
             
             <div id="messageContainer"></div>
+            <div id="extractionMeta" class="model-note" style="display:none;"></div>
             
             <!-- Results Section -->
             <div id="resultsSection" class="results-section">
@@ -368,7 +412,10 @@
         const roleFilter = document.getElementById('roleFilter');
         const companyFilter = document.getElementById('companyFilter');
         const regionFilter = document.getElementById('regionFilter');
+        const skillCountFilter = document.getElementById('skillCountFilter');
         const refreshFiltersBtn = document.getElementById('refreshFiltersBtn');
+        const extractionMeta = document.getElementById('extractionMeta');
+        const topJobsCtx = document.getElementById('topJobsChart');
         
         let extractedSkills = [];
 
@@ -407,8 +454,34 @@
             }
         });
 
+        let topJobsChart = new Chart(topJobsCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Openings',
+                    data: [],
+                    backgroundColor: 'rgba(0, 178, 169, 0.65)',
+                    borderColor: 'rgba(0, 128, 122, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: { beginAtZero: true }
+                }
+            }
+        });
+
         loadMarketContext();
         loadSkillDemand();
+        loadTopJobsByRegion();
 
         // Keep data fresh even if websocket payload does not match current filters.
         setInterval(loadSkillDemand, 120000);
@@ -429,6 +502,7 @@
                 const data = JSON.parse(event.data);
                 if (!roleFilter.value && !companyFilter.value && !regionFilter.value) {
                     updateChart(data);
+                    clearTopJobsChart('Select a region to view top jobs.');
                 }
             } catch (e) {
                 console.error('Error parsing message:', e);
@@ -460,9 +534,14 @@
             }
         }
 
-        async function loadMarketContext() {
+        async function loadMarketContext({ includeRole = false, includeCompany = false } = {}) {
             try {
-                const response = await fetch('/api/market_context');
+                const params = new URLSearchParams();
+                if (regionFilter.value) params.set('region', regionFilter.value);
+                if (includeRole && roleFilter.value) params.set('role', roleFilter.value);
+                if (includeCompany && companyFilter.value) params.set('company', companyFilter.value);
+
+                const response = await fetch(`/api/market_context?${params.toString()}`);
                 if (!response.ok) return;
 
                 const data = await response.json();
@@ -486,6 +565,9 @@
 
             if (previous) {
                 select.value = previous;
+                if (select.value !== previous) {
+                    select.value = '';
+                }
             }
         }
 
@@ -495,21 +577,73 @@
                 if (roleFilter.value) params.set('role', roleFilter.value);
                 if (companyFilter.value) params.set('company', companyFilter.value);
                 if (regionFilter.value) params.set('region', regionFilter.value);
-                params.set('top_n', '10');
+                params.set('top_n', skillCountFilter.value || '25');
 
                 const response = await fetch(`/api/skill_demand?${params.toString()}`);
                 if (!response.ok) return;
 
                 const data = await response.json();
                 updateChart(data);
+                const sourceText = data.source ? `Data source: ${data.source}` : '';
+                document.getElementById('filterHint').textContent = sourceText || 'Filters are linked. Choosing a region updates available roles and companies.';
             } catch (error) {
                 console.error('Error loading skill demand:', error);
             }
         }
 
-        refreshFiltersBtn.addEventListener('click', () => {
-            loadSkillDemand();
-            showMessage('Updated market demand view with selected filters.', 'success');
+        async function loadTopJobsByRegion() {
+            const region = regionFilter.value;
+            if (!region) {
+                clearTopJobsChart('Select a region to view top jobs.');
+                return;
+            }
+
+            try {
+                const params = new URLSearchParams();
+                params.set('region', region);
+                params.set('limit', '10');
+                const response = await fetch(`/api/top_jobs_by_region?${params.toString()}`);
+                if (!response.ok) {
+                    clearTopJobsChart('No regional job data available.');
+                    return;
+                }
+
+                const data = await response.json();
+                const jobs = data.jobs || [];
+                if (!jobs.length) {
+                    clearTopJobsChart(`No jobs found for ${region}.`);
+                    return;
+                }
+
+                topJobsChart.data.labels = jobs.map(item => item.name);
+                topJobsChart.data.datasets[0].data = jobs.map(item => item.count);
+                topJobsChart.update();
+            } catch (error) {
+                console.error('Error loading top jobs by region:', error);
+                clearTopJobsChart('No regional job data available.');
+            }
+        }
+
+        function clearTopJobsChart(message) {
+            topJobsChart.data.labels = [message];
+            topJobsChart.data.datasets[0].data = [0];
+            topJobsChart.update();
+        }
+
+        regionFilter.addEventListener('change', async () => {
+            await loadMarketContext();
+            await loadSkillDemand();
+            await loadTopJobsByRegion();
+        });
+
+        refreshFiltersBtn.addEventListener('click', async () => {
+            await loadMarketContext({ includeRole: true, includeCompany: true });
+            await loadSkillDemand();
+            await loadTopJobsByRegion();
+            if (extractedSkills.length) {
+                await analyzeSkillGap(extractedSkills);
+            }
+            showMessage('Updated market demand and region job trends.', 'success');
         });
         
         // Resume upload functionality
@@ -552,6 +686,14 @@
                 console.log('Upload result:', uploadResult);
                 
                 extractedSkills = uploadResult.skills;
+
+                if (uploadResult.extraction_meta) {
+                    const meta = uploadResult.extraction_meta;
+                    extractionMeta.style.display = 'block';
+                    extractionMeta.textContent = `Extraction mode: ${meta.extraction_mode || 'unknown'} | Model: ${meta.model_version || 'n/a'} | Skills detected: ${meta.skills_detected_total || uploadResult.skills_found} | Fallback used: ${meta.used_fallback ? 'yes' : 'no'}`;
+                } else {
+                    extractionMeta.style.display = 'none';
+                }
                 
                 showMessage(
                     `✅ Successfully extracted ${uploadResult.skills_found} skills from your resume!`,
@@ -615,7 +757,6 @@
             const matchingSkillsDiv = document.getElementById('matchingSkills');
             if (result.matching_skills && result.matching_skills.length > 0) {
                 matchingSkillsDiv.innerHTML = result.matching_skills
-                    .slice(0, 20)
                     .map(skill => `<span class="skill-badge">${skill.skill} (${skill.demand_count})</span>`)
                     .join('');
             } else {
@@ -626,7 +767,6 @@
             const missingSkillsDiv = document.getElementById('missingSkills');
             if (result.missing_skills && result.missing_skills.length > 0) {
                 missingSkillsDiv.innerHTML = result.missing_skills
-                    .slice(0, 15)
                     .map(skill => `<span class="skill-badge missing">${skill.skill} (${skill.demand_count})</span>`)
                     .join('');
             } else {

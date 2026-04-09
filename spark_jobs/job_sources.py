@@ -71,6 +71,24 @@ class BaseScraper:
             logger.warning("%s request failed for %s: %s", self.source_name, url, exc)
             return None
 
+    def _post(self, url: str, json_payload: dict) -> Optional[requests.Response]:
+        try:
+            response = self.session.post(
+                url,
+                headers=DEFAULT_HEADERS,
+                json=json_payload,
+                timeout=self.timeout,
+            )
+            if response.status_code != 200:
+                if response.status_code in (401, 403, 429):
+                    self.blocked = True
+                logger.warning("%s returned status=%s for %s", self.source_name, response.status_code, url)
+                return None
+            return response
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.warning("%s request failed for %s: %s", self.source_name, url, exc)
+            return None
+
 
 class IndeedScraper(BaseScraper):
     source_name = "indeed"
@@ -322,6 +340,105 @@ class ArbeitnowApiScraper(BaseScraper):
         return postings
 
 
+class AdzunaIndiaApiScraper(BaseScraper):
+    source_name = "adzuna"
+
+    def __init__(self, timeout: int = 20):
+        super().__init__(timeout=timeout)
+        self.app_id = os.getenv("ADZUNA_APP_ID", "").strip()
+        self.app_key = os.getenv("ADZUNA_APP_KEY", "").strip()
+        self.country = os.getenv("ADZUNA_COUNTRY", "in").strip().lower() or "in"
+
+    def scrape(self, query: str, location: str = "", max_pages: int = 1) -> List[JobPosting]:
+        if not self.app_id or not self.app_key:
+            logger.info("%s disabled: missing ADZUNA_APP_ID/ADZUNA_APP_KEY", self.source_name)
+            return []
+
+        postings: List[JobPosting] = []
+        for page in range(1, max_pages + 1):
+            url = (
+                f"https://api.adzuna.com/v1/api/jobs/{self.country}/search/{page}"
+                f"?app_id={quote_plus(self.app_id)}"
+                f"&app_key={quote_plus(self.app_key)}"
+                f"&what={quote_plus(query)}"
+                f"&where={quote_plus(location or 'India')}"
+                "&content-type=application/json"
+            )
+            response = self._get(url)
+            if not response:
+                continue
+
+            try:
+                payload = response.json()
+            except Exception:
+                continue
+
+            results = payload.get("results", [])
+            for job in results:
+                postings.append(
+                    JobPosting(
+                        source=self.source_name,
+                        title=(job.get("title") or "Unknown").strip(),
+                        company=((job.get("company") or {}).get("display_name") or "Unknown").strip(),
+                        location=((job.get("location") or {}).get("display_name") or (location or "India")).strip(),
+                        role=query,
+                        description=re.sub(r"\s+", " ", job.get("description") or "").strip(),
+                        url=(job.get("redirect_url") or "").strip(),
+                        scraped_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                )
+
+        return postings
+
+
+class JoobleIndiaApiScraper(BaseScraper):
+    source_name = "jooble"
+
+    def __init__(self, timeout: int = 20):
+        super().__init__(timeout=timeout)
+        self.api_key = os.getenv("JOOBLE_API_KEY", "").strip()
+
+    def scrape(self, query: str, location: str = "", max_pages: int = 1) -> List[JobPosting]:
+        if not self.api_key:
+            logger.info("%s disabled: missing JOOBLE_API_KEY", self.source_name)
+            return []
+
+        url = f"https://jooble.org/api/{self.api_key}"
+        postings: List[JobPosting] = []
+
+        for page in range(1, max_pages + 1):
+            payload = {
+                "keywords": query,
+                "location": location or "India",
+                "page": page,
+            }
+            response = self._post(url, json_payload=payload)
+            if not response:
+                continue
+
+            try:
+                body = response.json()
+            except Exception:
+                continue
+
+            jobs = body.get("jobs", [])
+            for job in jobs:
+                postings.append(
+                    JobPosting(
+                        source=self.source_name,
+                        title=(job.get("title") or "Unknown").strip(),
+                        company=(job.get("company") or "Unknown").strip(),
+                        location=(job.get("location") or (location or "India")).strip(),
+                        role=query,
+                        description=re.sub(r"\s+", " ", job.get("snippet") or "").strip(),
+                        url=(job.get("link") or "").strip(),
+                        scraped_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                )
+
+        return postings
+
+
 def get_default_scrapers() -> List[BaseScraper]:
     """
     Return source scrapers requested by product requirements.
@@ -330,6 +447,8 @@ def get_default_scrapers() -> List[BaseScraper]:
     best-effort ingestion and continue with available source results.
     """
     return [
+        AdzunaIndiaApiScraper(),
+        JoobleIndiaApiScraper(),
         RemotiveApiScraper(),
         ArbeitnowApiScraper(),
         IndeedScraper(),

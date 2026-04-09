@@ -1,6 +1,8 @@
 # Live Market Pipeline (Scrape -> Hive -> Dashboard)
 
 This project now supports periodic market ingestion from:
+- Adzuna India API
+- Jooble API
 - Remotive API
 - Arbeitnow API
 - Indeed
@@ -33,9 +35,28 @@ source .venv/bin/activate
 export SCRAPE_INTERVAL_MINUTES=30
 export TARGET_ROLES="software development engineer,backend engineer,data engineer"
 export TARGET_COMPANIES="amazon,microsoft,google"
-export TARGET_LOCATION="United States"
+export TARGET_LOCATION="India"
 export SCRAPE_MAX_PAGES=1
+export SOURCE_WHITELIST="adzuna,jooble,linkedin,remotive"
+export ADZUNA_APP_ID="<your_adzuna_app_id>"
+export ADZUNA_APP_KEY="<your_adzuna_app_key>"
+export JOOBLE_API_KEY="<your_jooble_api_key>"
 python spark_jobs/market_sync.py
+```
+
+## 3b. (Optional) Start ML extraction microservice
+
+```bash
+source .venv/bin/activate
+pip install -r ml_service/requirements.txt
+uvicorn ml_service.app:app --host 0.0.0.0 --port 8100 --reload
+```
+
+Enable ML extraction in API/sync terminals:
+
+```bash
+export ML_SERVICE_ENABLED=true
+export ML_SERVICE_URL=http://localhost:8100
 ```
 
 ## 4. Open dashboard
@@ -68,4 +89,5 @@ The sync process writes:
 
 - Sources can be rate-limited or blocked; blocked sources are auto-skipped per cycle.
 - Gap analysis now has fallback behavior (role/company -> role-only -> global -> live -> baseline), so it does not fail when a narrow filter has sparse data.
+- ML extraction service is optional; pipeline automatically falls back to regex extraction if service is unavailable.
 - Keep the old Kafka streaming flow only if you still want additional real-time pushes from other sources.

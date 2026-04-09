@@ -2,8 +2,10 @@
 Skill Extractor - Extract and identify technical skills from text
 """
 import re
-from typing import List, Dict, Set
-from collections import Counter
+import os
+import logging
+import requests
+from typing import List, Dict, Optional, Tuple
 
 # Comprehensive skill dictionary covering various technical domains
 TECH_SKILLS = [
@@ -82,8 +84,54 @@ TECH_SKILLS = [
     "rabbitmq", "nginx", "apache", "tomcat", "iis", "load balancing"
 ]
 
-# Create a set for faster lookups
 TECH_SKILLS_SET = set(skill.lower() for skill in TECH_SKILLS)
+
+logger = logging.getLogger(__name__)
+
+ML_SCORE_THRESHOLD = float(os.getenv("ML_SCORE_THRESHOLD", "0.18"))
+ML_TOP_K_MAX = int(os.getenv("ML_TOP_K_MAX", "120"))
+
+
+def _truthy_env(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes"}
+
+
+def _ml_service_enabled() -> bool:
+    return _truthy_env("ML_SERVICE_ENABLED")
+
+
+def _ml_service_url() -> str:
+    return os.getenv("ML_SERVICE_URL", "http://localhost:8100").rstrip("/")
+
+
+def _normalize_skill_name(skill: str) -> str:
+    cleaned = (skill or "").strip()
+    if not cleaned:
+        return ""
+
+    canonical = {
+        "javascript": "JavaScript",
+        "typescript": "TypeScript",
+        "sql": "SQL",
+        "aws": "AWS",
+        "gcp": "GCP",
+        "node.js": "Node.js",
+        "next.js": "Next.js",
+        "ci/cd": "CI/CD",
+        "tensorflow": "TensorFlow",
+        "pytorch": "PyTorch",
+        "scikit-learn": "Scikit-Learn",
+        "postgresql": "PostgreSQL",
+        "mysql": "MySQL",
+        "mongodb": "MongoDB",
+        "redis": "Redis",
+        "kubernetes": "Kubernetes",
+        "react": "React",
+        "fastapi": "FastAPI",
+    }
+
+    lowered = cleaned.lower()
+    return canonical.get(lowered, cleaned.title())
 
 
 def extract_skills(text: str, use_advanced: bool = False) -> Dict[str, int]:
@@ -121,6 +169,99 @@ def extract_skills(text: str, use_advanced: bool = False) -> Dict[str, int]:
     return skill_counts
 
 
+def extract_skills_with_fallback(
+    text: str,
+    top_k: Optional[int] = None,
+    min_score: Optional[float] = None,
+    include_metadata: bool = False,
+) -> Dict[str, int] | Tuple[Dict[str, int], Dict[str, object]]:
+    """
+    Extract skills using ML service when enabled, otherwise fallback to regex extraction.
+
+    Return shape intentionally matches extract_skills().
+    """
+    if not text:
+        empty = {}
+        if include_metadata:
+            return empty, {
+                "extraction_mode": "empty",
+                "model_version": None,
+                "used_fallback": False,
+                "taxonomy_size": len(TECH_SKILLS_SET),
+                "skills_detected_total": 0,
+            }
+        return empty
+
+    regex_result = extract_skills(text)
+    threshold = ML_SCORE_THRESHOLD if min_score is None else float(min_score)
+    requested_top_k = max(1, min(int(top_k or ML_TOP_K_MAX), ML_TOP_K_MAX))
+
+    metadata: Dict[str, object] = {
+        "extraction_mode": "regex",
+        "model_version": None,
+        "used_fallback": False,
+        "taxonomy_size": len(TECH_SKILLS_SET),
+        "skills_detected_total": len(regex_result),
+    }
+
+    if not _ml_service_enabled():
+        if include_metadata:
+            return regex_result, metadata
+        return regex_result
+
+    try:
+        response = requests.post(
+            f"{_ml_service_url()}/extract_skills",
+            json={"text": text, "top_k": requested_top_k, "min_score": threshold},
+            timeout=3,
+        )
+        if response.status_code != 200:
+            logger.warning("ML extraction returned status=%s, falling back", response.status_code)
+            metadata["used_fallback"] = True
+            if include_metadata:
+                return regex_result, metadata
+            return regex_result
+
+        payload = response.json()
+        skills = payload.get("skills", [])
+        if not isinstance(skills, list):
+            logger.warning("ML extraction payload had invalid skills list, falling back")
+            metadata["used_fallback"] = True
+            if include_metadata:
+                return regex_result, metadata
+            return regex_result
+
+        result: Dict[str, int] = {}
+        for skill in skills:
+            name = str(skill.get("name", "")).strip()
+            score = float(skill.get("score", 0))
+            if not name:
+                continue
+            if score < threshold:
+                continue
+            result[_normalize_skill_name(name)] = max(1, int(round(score * 100)))
+
+        if _truthy_env("ML_ENSEMBLE_REGEX", "true"):
+            for skill_name, count in regex_result.items():
+                normalized = _normalize_skill_name(skill_name)
+                result[normalized] = max(result.get(normalized, 0), count)
+
+        metadata["extraction_mode"] = "ml_hybrid" if _truthy_env("ML_ENSEMBLE_REGEX", "true") else "ml"
+        metadata["model_version"] = payload.get("model_version")
+        metadata["taxonomy_size"] = int(payload.get("taxonomy_size") or len(TECH_SKILLS_SET))
+        metadata["skills_detected_total"] = len(result)
+
+        if include_metadata:
+            return result or regex_result, metadata
+        return result or regex_result
+    except Exception as exc:
+        logger.warning("ML extraction failed (%s), falling back to regex", exc)
+        metadata["used_fallback"] = True
+        if include_metadata:
+            return regex_result, metadata
+        return regex_result
+
+
 def extract_skills_list(text: str) -> List[str]:
     """
     Extract list of unique skills found in text
@@ -131,11 +272,11 @@ def extract_skills_list(text: str) -> List[str]:
     Returns:
         Sorted list of skill names
     """
-    skill_counts = extract_skills(text)
+    skill_counts = extract_skills_with_fallback(text)
     return sorted(skill_counts.keys())
 
 
-def extract_top_skills(text: str, top_n: int = 10) -> Dict[str, int]:
+def extract_top_skills(text: str, top_n: Optional[int] = 25) -> Dict[str, int]:
     """
     Extract top N skills by frequency
     
@@ -146,10 +287,12 @@ def extract_top_skills(text: str, top_n: int = 10) -> Dict[str, int]:
     Returns:
         Dictionary of top N skills with counts
     """
-    skill_counts = extract_skills(text)
+    skill_counts = extract_skills_with_fallback(text)
     
     # Sort by count descending and get top N
-    sorted_skills = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    sorted_skills = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)
+    if top_n is not None:
+        sorted_skills = sorted_skills[: max(1, int(top_n))]
     
     return dict(sorted_skills)
 

@@ -3,6 +3,7 @@ fastapi
 uvicorn[standard]
 pydantic
 python-multipart
+python-dotenv
 
 # Data processing
 pandas
@@ -23,3 +24,4 @@ pyarrow
 # Optional for enhanced skill extraction
 # spacy
 # transformers
+sentence-transformers

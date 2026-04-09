@@ -15,6 +15,8 @@ Dynamic Skill Gap Radar analyzes live job-market demand and compares it with use
 
 ## Sources (Best Effort)
 
+- Adzuna India API
+- Jooble API
 - Remotive API
 - Arbeitnow API
 - LinkedIn public job endpoint
@@ -61,8 +63,9 @@ Terminal 2 (One-time ingest smoke test):
 source .venv/bin/activate
 export TARGET_ROLES="software development engineer,backend engineer,data engineer"
 export TARGET_COMPANIES="amazon,microsoft,google"
-export TARGET_LOCATION="United States"
+export TARGET_LOCATION="India"
 export SCRAPE_MAX_PAGES=1
+export SOURCE_WHITELIST="adzuna,jooble,linkedin,remotive"
 python -c "from spark_jobs.market_sync import scrape_once; print('rows_ingested=', scrape_once())"
 ```
 
@@ -82,7 +85,33 @@ Open dashboard at `http://localhost:8000`.
 - `TARGET_COMPANIES`: comma-separated company keywords
 - `TARGET_LOCATION`: location keyword for search
 - `SCRAPE_MAX_PAGES`: pages requested per source/query
+- `SOURCE_WHITELIST`: optional comma-separated source allow-list
+- `SOURCE_BLACKLIST`: optional comma-separated source deny-list
 - `LINKEDIN_FETCH_DESCRIPTIONS`: `1` to fetch job detail pages (slower), default `0`
+- `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`: required for Adzuna source
+- `JOOBLE_API_KEY`: required for Jooble source
+- `ML_SERVICE_ENABLED`: use ML microservice for skill extraction (`true`/`false`)
+- `ML_SERVICE_URL`: ML microservice base URL
+
+## ML Microservice
+
+Skill extraction can run in a separate ML service and automatically fallback to regex on errors.
+
+Run:
+
+```bash
+cd /home/quasar/repos/dynamic-skill-gap-radar
+source .venv/bin/activate
+pip install -r ml_service/requirements.txt
+uvicorn ml_service.app:app --host 0.0.0.0 --port 8100 --reload
+```
+
+Then enable integration in the main app environment:
+
+```bash
+export ML_SERVICE_ENABLED=true
+export ML_SERVICE_URL=http://localhost:8100
+```
 
 ## APIs
 

@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Dict, List
 
 import requests
+from dotenv import load_dotenv
+
+# Auto-load project env file for local runs.
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 # Support both execution styles:
 # 1) python -c "from spark_jobs.market_sync import scrape_once"
@@ -22,12 +26,12 @@ import requests
 try:
     from spark_jobs.hive_store import build_hive_spark, upsert_postings, fetch_market_demand
     from spark_jobs.job_sources import dedupe_postings, get_default_scrapers
-    from spark_jobs.skill_extractor import extract_skills_list
+    from spark_jobs.skill_extractor import extract_skills_with_fallback
 except ModuleNotFoundError:
     sys.path.append(str(Path(__file__).parent))
     from hive_store import build_hive_spark, upsert_postings, fetch_market_demand
     from job_sources import dedupe_postings, get_default_scrapers
-    from skill_extractor import extract_skills_list
+    from skill_extractor import extract_skills_with_fallback
 
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +42,28 @@ def _env_list(name: str, default: List[str]) -> List[str]:
     raw = os.getenv(name, "")
     values = [v.strip() for v in raw.split(",") if v.strip()]
     return values or default
+
+
+def _normalize_name_list(raw_csv: str) -> set[str]:
+    return {item.strip().lower() for item in raw_csv.split(",") if item.strip()}
+
+
+def _filter_scrapers(scrapers: List) -> List:
+    whitelist = _normalize_name_list(os.getenv("SOURCE_WHITELIST", ""))
+    blacklist = _normalize_name_list(os.getenv("SOURCE_BLACKLIST", ""))
+
+    filtered = []
+    for scraper in scrapers:
+        name = scraper.source_name.lower().strip()
+
+        if whitelist and name not in whitelist:
+            continue
+        if name in blacklist:
+            continue
+
+        filtered.append(scraper)
+
+    return filtered
 
 
 def _build_search_queries(roles: List[str], companies: List[str]) -> List[str]:
@@ -75,11 +101,17 @@ def scrape_once() -> int:
         "TARGET_COMPANIES",
         ["amazon", "microsoft", "google", "meta", "netflix"],
     )
-    location = os.getenv("TARGET_LOCATION", "United States")
+    location = os.getenv("TARGET_LOCATION", "India")
     max_pages = int(os.getenv("SCRAPE_MAX_PAGES", "1"))
 
     queries = _build_search_queries(roles, companies)
-    scrapers = get_default_scrapers()
+    scrapers = _filter_scrapers(get_default_scrapers())
+
+    if not scrapers:
+        logger.warning("No active sources after SOURCE_WHITELIST/SOURCE_BLACKLIST filtering")
+        return 0
+
+    logger.info("Active sources: %s", ", ".join(scraper.source_name for scraper in scrapers))
 
     all_postings = []
     for query in queries:
@@ -99,6 +131,7 @@ def scrape_once() -> int:
     rows = []
     for posting in deduped:
         text = f"{posting.title} {posting.description}"
+        extracted = extract_skills_with_fallback(text)
         rows.append(
             {
                 "job_uid": posting.uid,
@@ -110,7 +143,7 @@ def scrape_once() -> int:
                 "description": posting.description,
                 "url": posting.url,
                 "scraped_at": posting.scraped_at,
-                "skills": extract_skills_list(text),
+                "skills": sorted(extracted.keys()),
             }
         )
 

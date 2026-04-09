@@ -5,13 +5,16 @@ from pydantic import BaseModel
 import json
 import sys
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any, Tuple
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 # Add spark_jobs directory to Python path
 sys.path.append(str(Path(__file__).parent.parent / "spark_jobs"))
 
 from resume_parser import parse_resume, clean_text
-from skill_extractor import extract_skills
+from skill_extractor import extract_skills_with_fallback
 from skill_gap_analyzer import analyze_gap
 
 app = FastAPI()
@@ -60,9 +63,9 @@ async def get_dashboard():
 @app.get("/data")
 async def get_spark_data():
     """Read latest demand data from scraped market snapshots"""
-    demand = _load_market_demand(top_n=10)
+    demand = _load_market_demand(top_n=25)
     if not demand:
-        demand = dict(list(DEFAULT_SKILL_DEMAND.items())[:10])
+        demand = dict(list(DEFAULT_SKILL_DEMAND.items())[:25])
     return {
         "skills": [skill.title() for skill in demand.keys()],
         "counts": list(demand.values()),
@@ -147,9 +150,8 @@ async def upload_resume(file: UploadFile = File(...)):
     # Clean text
     cleaned_text = clean_text(extracted_text)
     
-    # Extract skills
-    skills_dict = extract_skills(cleaned_text)
-    skills_list = list(skills_dict.keys())
+    skills_dict, extraction_meta = _extract_resume_skills_full(cleaned_text)
+    skills_list = sorted(skills_dict.keys())
     
     # Save resume (optional - for session)
     resume_dir = Path(__file__).parent.parent / "data" / "processed" / "resumes"
@@ -159,9 +161,11 @@ async def upload_resume(file: UploadFile = File(...)):
         "filename": file.filename,
         "text_length": len(cleaned_text),
         "skills_found": len(skills_list),
+        "skills_detected_total": len(skills_list),
         "skills": skills_list,
         "skill_details": skills_dict,
-        "preview": cleaned_text[:500]  # First 500 characters as preview
+        "preview": cleaned_text[:500],
+        "extraction_meta": extraction_meta,
     }
 
 
@@ -190,7 +194,7 @@ async def analyze_skill_gap(request: SkillGapRequest):
     analysis_result = analyze_gap(
         resume_skills=request.resume_skills,
         market_demand=market_demand,
-        top_n_recommendations=10
+        top_n_recommendations=max(5, min(request.top_n, 100)),
     )
 
     analysis_result["market_source"] = demand_source
@@ -204,10 +208,64 @@ async def analyze_skill_gap(request: SkillGapRequest):
 
 
 @app.get("/api/market_context")
-async def get_market_context(limit: int = Query(default=200, ge=1, le=1000)):
+async def get_market_context(
+    role: Optional[str] = Query(default=None),
+    company: Optional[str] = Query(default=None),
+    region: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
     """Return available roles and companies from scraped postings."""
-    context = _load_market_context(limit=limit)
+    context = _load_market_context(role=role, company=company, region=region, limit=limit)
     return context
+
+
+@app.get("/api/top_jobs_by_region")
+async def get_top_jobs_by_region(
+    region: str = Query(..., min_length=1),
+    limit: int = Query(default=10, ge=1, le=30),
+):
+    """Return top in-demand job titles/roles for a selected region."""
+    try:
+        import pandas as pd
+
+        postings_path = Path(__file__).parent.parent / "data" / "processed" / "market" / "job_postings.parquet"
+        if not postings_path.exists():
+            return {"region": region, "jobs": [], "total": 0, "source": "snapshot_missing"}
+
+        df = pd.read_parquet(postings_path)
+        if df.empty:
+            return {"region": region, "jobs": [], "total": 0, "source": "snapshot_empty"}
+
+        region_norm = region.lower().strip()
+        if "location" not in df.columns:
+            return {"region": region, "jobs": [], "total": 0, "source": "snapshot_missing_location"}
+
+        region_df = df[df["location"].astype(str).str.lower().str.strip() == region_norm]
+        if region_df.empty:
+            return {"region": region, "jobs": [], "total": 0, "source": "snapshot_no_region_match"}
+
+        title_col = "title" if "title" in region_df.columns else "role"
+        grouped = (
+            region_df[title_col]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", None)
+            .dropna()
+            .value_counts()
+            .head(limit)
+        )
+
+        jobs = [{"name": str(title), "count": int(count)} for title, count in grouped.items()]
+        return {
+            "region": region,
+            "jobs": jobs,
+            "total": len(jobs),
+            "source": "snapshot_region_jobs",
+        }
+    except Exception as e:
+        print(f"Error loading top jobs by region: {e}")
+        return {"region": region, "jobs": [], "total": 0, "source": "error"}
 
 
 @app.get("/api/market_status")
@@ -274,7 +332,7 @@ async def get_skill_demand(
     role: Optional[str] = Query(default=None),
     company: Optional[str] = Query(default=None),
     region: Optional[str] = Query(default=None),
-    top_n: int = Query(default=10, ge=1, le=50),
+    top_n: int = Query(default=25, ge=1, le=200),
 ):
     """
     Get current skill demand data from scraped market snapshots.
@@ -295,6 +353,7 @@ async def get_skill_demand(
         "counts": list(market_demand.values()),
         "total_skills": len(market_demand),
         "source": source,
+        "top_n": top_n,
     }
 
 
@@ -390,26 +449,42 @@ def _resolve_market_demand(
     return dict(list(DEFAULT_SKILL_DEMAND.items())[:top_n]), "baseline_default"
 
 
-def _load_market_context(limit: int = 200) -> Dict[str, List[str]]:
+def _load_market_context(
+    role: Optional[str] = None,
+    company: Optional[str] = None,
+    region: Optional[str] = None,
+    limit: int = 200,
+) -> Dict[str, List[str]]:
     try:
         import pandas as pd
 
         parquet_path = Path(__file__).parent.parent / "data" / "processed" / "market" / "job_postings.parquet"
         if not parquet_path.exists():
-            return {"roles": [], "companies": []}
+            return {"roles": [], "companies": [], "regions": []}
 
         df = pd.read_parquet(parquet_path, columns=["role", "company", "location"])
         if df.empty:
             return {"roles": [], "companies": [], "regions": []}
 
+        df["role"] = df["role"].astype(str).str.strip()
+        df["company"] = df["company"].astype(str).str.strip()
+        df["location"] = df["location"].astype(str).str.strip()
+
+        if region:
+            df = df[df["location"].str.lower() == region.lower().strip()]
+        if role:
+            df = df[df["role"].str.lower() == role.lower().strip()]
+        if company:
+            df = df[df["company"].str.lower() == company.lower().strip()]
+
         roles = sorted(
-            [r for r in df["role"].dropna().astype(str).str.strip().unique().tolist() if r]
+            [r for r in df["role"].dropna().astype(str).str.strip().unique().tolist() if r and r.lower() != "nan"]
         )[:limit]
         companies = sorted(
-            [c for c in df["company"].dropna().astype(str).str.strip().unique().tolist() if c]
+            [c for c in df["company"].dropna().astype(str).str.strip().unique().tolist() if c and c.lower() != "nan"]
         )[:limit]
         regions = sorted(
-            [r for r in df["location"].dropna().astype(str).str.strip().unique().tolist() if r]
+            [r for r in df["location"].dropna().astype(str).str.strip().unique().tolist() if r and r.lower() != "nan"]
         )[:limit]
 
         return {
@@ -420,3 +495,56 @@ def _load_market_context(limit: int = 200) -> Dict[str, List[str]]:
     except Exception as e:
         print(f"Error loading market context snapshot: {e}")
         return {"roles": [], "companies": [], "regions": []}
+
+
+def _extract_resume_skills_full(text: str) -> Tuple[Dict[str, int], Dict[str, Any]]:
+    """Extract skills from full resume text with chunking for long documents."""
+    words = text.split()
+    if not words:
+        return {}, {
+            "extraction_mode": "empty",
+            "model_version": None,
+            "used_fallback": False,
+            "taxonomy_size": 0,
+            "skills_detected_total": 0,
+            "chunks_processed": 0,
+        }
+
+    chunk_size = 700
+    overlap = 90
+    start = 0
+    merged: Dict[str, int] = {}
+    modes = set()
+    model_versions = set()
+    used_fallback = False
+    taxonomy_size = 0
+    chunk_count = 0
+
+    while start < len(words):
+        end = min(len(words), start + chunk_size)
+        chunk_text = " ".join(words[start:end])
+        chunk_count += 1
+        chunk_skills, chunk_meta = extract_skills_with_fallback(chunk_text, include_metadata=True)
+        for skill_name, score in chunk_skills.items():
+            merged[skill_name] = max(merged.get(skill_name, 0), int(score))
+
+        modes.add(str(chunk_meta.get("extraction_mode", "unknown")))
+        model_version = chunk_meta.get("model_version")
+        if model_version:
+            model_versions.add(str(model_version))
+        used_fallback = used_fallback or bool(chunk_meta.get("used_fallback", False))
+        taxonomy_size = max(taxonomy_size, int(chunk_meta.get("taxonomy_size") or 0))
+
+        if end >= len(words):
+            break
+        start = max(0, end - overlap)
+
+    meta = {
+        "extraction_mode": "+".join(sorted(modes)) if modes else "unknown",
+        "model_version": ",".join(sorted(model_versions)) if model_versions else None,
+        "used_fallback": used_fallback,
+        "taxonomy_size": taxonomy_size,
+        "skills_detected_total": len(merged),
+        "chunks_processed": chunk_count,
+    }
+    return merged, meta

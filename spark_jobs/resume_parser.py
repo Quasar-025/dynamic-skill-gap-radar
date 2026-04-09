@@ -113,12 +113,16 @@ def clean_text(text: str) -> str:
     if not text:
         return ""
     
-    # Replace multiple spaces with single space
     import re
-    text = re.sub(r'\s+', ' ', text)
-    
-    # Remove non-printable characters
-    text = ''.join(char for char in text if char.isprintable() or char in ['\n', '\t'])
+
+    # Normalize line endings and preserve section boundaries.
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'\t+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r'[ ]{2,}', ' ', text)
+
+    # Remove non-printable characters but keep newline-based structure.
+    text = ''.join(char for char in text if char.isprintable() or char == '\n')
     
     return text.strip()
 
