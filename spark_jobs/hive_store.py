@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Dict, List
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, explode, lower, trim
+from pyspark.sql import Window
+from pyspark.sql.functions import col, explode, lower, trim, row_number, to_timestamp
 from pyspark.sql.types import (
     ArrayType,
     StringType,
@@ -62,9 +63,18 @@ def upsert_postings(spark: SparkSession, rows: List[Dict]) -> int:
 
     if spark.catalog.tableExists(POSTINGS_TABLE):
         existing = spark.table(POSTINGS_TABLE)
-        combined = existing.unionByName(incoming, allowMissingColumns=True).dropDuplicates(["job_uid"])
+        merged = existing.unionByName(incoming, allowMissingColumns=True)
     else:
-        combined = incoming.dropDuplicates(["job_uid"])
+        merged = incoming
+
+    # Keep the newest scrape for each job UID so recommendations use fresh market data.
+    window = Window.partitionBy("job_uid").orderBy(to_timestamp(col("scraped_at")).desc_nulls_last())
+    combined = (
+        merged
+        .withColumn("_rn", row_number().over(window))
+        .filter(col("_rn") == 1)
+        .drop("_rn")
+    )
 
     staging_table = f"{DB_NAME}.job_postings_staging"
     combined.write.mode("overwrite").saveAsTable(staging_table)

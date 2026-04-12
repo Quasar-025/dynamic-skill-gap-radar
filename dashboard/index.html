@@ -6,36 +6,80 @@
     <title>Skill Gap Radar - Live Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --bg: radial-gradient(circle at 10% 20%, #eef4ff 0%, #f7fbff 40%, #f3f7f2 100%);
+            --panel: #ffffff;
+            --panel-border: #dce7f5;
+            --text-main: #1f2a3d;
+            --text-muted: #5f6c7b;
+            --accent: #1f8ef1;
+            --accent-2: #0c7c59;
+        }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
+            max-width: none;
+            margin: 0;
+            padding: 22px 28px 28px;
+            background: var(--bg);
+            color: var(--text-main);
         }
         h1 {
-            color: #333;
-            text-align: center;
+            color: #15233b;
+            text-align: left;
+            margin: 0;
+            letter-spacing: 0.2px;
         }
         h2 {
-            color: #444;
+            color: #23395d;
             margin-top: 0;
         }
         .main-container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: minmax(560px, 1.2fr) minmax(460px, 1fr);
+            gap: 22px;
             margin-top: 20px;
+            align-items: start;
+        }
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            padding: 4px 0 8px;
+        }
+        .language-switcher {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--panel);
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--panel-border);
+        }
+        .language-switcher select {
+            border: 1px solid #ccd6e7;
+            border-radius: 6px;
+            padding: 6px 8px;
+            background: #fff;
         }
         .container {
-            background: white;
+            background: var(--panel);
             padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 10px 24px rgba(21, 51, 98, 0.08);
+            min-width: 0;
+        }
+        .market-column {
+            position: sticky;
+            top: 12px;
+        }
+        .resume-column {
+            min-height: 100%;
         }
         .filters {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr 140px auto;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(110px, 140px) auto;
             gap: 10px;
             margin-top: 15px;
             margin-bottom: 10px;
@@ -45,6 +89,7 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            min-width: 0;
         }
         .filter-group label {
             font-size: 12px;
@@ -52,6 +97,8 @@
             font-weight: 600;
         }
         .filter-group select {
+            width: 100%;
+            min-width: 0;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 6px;
@@ -65,6 +112,7 @@
             color: white;
             font-weight: 600;
             background: #1f8ef1;
+            white-space: nowrap;
         }
         .status {
             text-align: center;
@@ -166,7 +214,9 @@
             margin-top: 20px;
         }
         .results-section.show {
-            display: block;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
         }
         .score-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -175,6 +225,7 @@
             border-radius: 8px;
             text-align: center;
             margin-bottom: 20px;
+            grid-column: 1 / -1;
         }
         .score-value {
             font-size: 48px;
@@ -182,10 +233,11 @@
             margin: 10px 0;
         }
         .skill-panel {
-            margin-bottom: 20px;
+            margin-bottom: 0;
             padding: 15px;
             border-radius: 8px;
-            background: #f9f9f9;
+            background: #f9fbff;
+            border: 1px solid #e2ebf8;
         }
         .skill-panel h3 {
             margin-top: 0;
@@ -211,6 +263,40 @@
             background: white;
             border-left: 4px solid #2196F3;
             border-radius: 4px;
+        }
+        .job-card {
+            padding: 12px;
+            margin: 10px 0;
+            background: #fff;
+            border: 1px solid #e7edf8;
+            border-left: 4px solid #0c7c59;
+            border-radius: 6px;
+        }
+        .job-card h4 {
+            margin: 0 0 6px;
+            color: #1b335a;
+        }
+        .job-meta {
+            font-size: 13px;
+            color: #5e6673;
+            margin-bottom: 8px;
+        }
+        .fit-pill {
+            display: inline-block;
+            background: #0c7c59;
+            color: white;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .job-link {
+            display: inline-block;
+            margin-top: 8px;
+            text-decoration: none;
+            color: #0c63a8;
+            font-weight: 600;
         }
         .recommendation-item.high {
             border-left-color: #f44336;
@@ -274,9 +360,32 @@
             font-size: 12px;
             color: #666;
         }
+
+        @media (max-width: 1450px) {
+            .filters {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .refresh-btn {
+                width: 100%;
+            }
+        }
         
         @media (max-width: 768px) {
+            body {
+                padding: 14px;
+            }
+            .topbar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
             .main-container {
+                grid-template-columns: 1fr;
+            }
+            .market-column {
+                position: static;
+            }
+            .results-section.show {
                 grid-template-columns: 1fr;
             }
             .stats-grid {
@@ -289,34 +398,49 @@
     </style>
 </head>
 <body>
-    <h1>🎯 Skill Gap Radar - Live Job Market Analysis, add multilanguage and more models</h1>
+    <div class="topbar">
+        <h1 data-i18n="appTitle">🎯 Skill Gap Radar - Live Job Market Analysis</h1>
+        <div class="language-switcher">
+            <label for="languageSelect" data-i18n="languageLabel">Language</label>
+            <select id="languageSelect">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="hi">Hindi</option>
+                <option value="ta">Tamil</option>
+                <option value="te">Telugu</option>
+                <option value="ml">Malayalam</option>
+                <option value="kn">Kannada</option>
+            </select>
+        </div>
+    </div>
     
     <div class="main-container">
         <!-- Left Column: Real-time Job Market -->
-        <div class="container">
-            <h2>📊 Real-Time Job Market Demand</h2>
-            <div id="status" class="status disconnected">Connecting to server...</div>
+        <div class="container market-column">
+            <h2 data-i18n="marketTitle">📊 Real-Time Job Market Demand</h2>
+            <div id="status" class="status disconnected" data-i18n="statusConnecting">Connecting to server...</div>
             <div class="filters">
                 <div class="filter-group">
-                    <label for="roleFilter">Target Role</label>
+                    <label for="roleFilter" data-i18n="targetRole">Target Role</label>
                     <select id="roleFilter">
-                        <option value="">All Roles</option>
+                        <option value="" data-i18n="allRoles">All Roles</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="companyFilter">Target Company</label>
+                    <label for="companyFilter" data-i18n="targetCompany">Target Company</label>
                     <select id="companyFilter">
-                        <option value="">All Companies</option>
+                        <option value="" data-i18n="allCompanies">All Companies</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="regionFilter">Region</label>
+                    <label for="regionFilter" data-i18n="region">Region</label>
                     <select id="regionFilter">
-                        <option value="">All Regions</option>
+                        <option value="" data-i18n="allRegions">All Regions</option>
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="skillCountFilter">Skills Shown</label>
+                    <label for="skillCountFilter" data-i18n="skillsShown">Skills Shown</label>
                     <select id="skillCountFilter">
                         <option value="10">10</option>
                         <option value="25" selected>25</option>
@@ -324,34 +448,34 @@
                         <option value="100">100</option>
                     </select>
                 </div>
-                <button id="refreshFiltersBtn" class="refresh-btn">Apply</button>
+                <button id="refreshFiltersBtn" class="refresh-btn" data-i18n="apply">Apply</button>
             </div>
-            <div class="subtle-note" id="filterHint">Filters are linked. Choosing a region updates available roles and companies.</div>
+            <div class="subtle-note" id="filterHint" data-i18n="filterHint">Filters are linked. Choosing a region updates available roles and companies.</div>
             <div class="chart-block">
-                <div class="chart-title">Top Skills in Selected Market</div>
+                <div class="chart-title" data-i18n="topSkillsMarket">Top Skills in Selected Market</div>
                 <canvas id="skillsChart"></canvas>
             </div>
             <div class="chart-block">
-                <div class="chart-title">Top Job Titles in Selected Region</div>
+                <div class="chart-title" data-i18n="topTitlesRegion">Top Job Titles in Selected Region</div>
                 <canvas id="topJobsChart"></canvas>
             </div>
         </div>
         
         <!-- Right Column: Resume Analysis -->
-        <div class="container">
-            <h2>📄 Resume Skill Gap Analysis</h2>
+        <div class="container resume-column">
+            <h2 data-i18n="resumeTitle">📄 Resume Skill Gap Analysis</h2>
             
             <!-- Upload Section -->
             <div class="upload-section">
-                <p>Upload your resume to analyze skill gaps</p>
+                <p data-i18n="uploadResumeDesc">Upload your resume to analyze skill gaps</p>
                 <div class="file-input-wrapper">
                     <input type="file" id="resumeFile" class="file-input" accept=".pdf,.docx,.doc,.txt">
-                    <label for="resumeFile" class="file-label">Choose Resume File</label>
+                    <label for="resumeFile" class="file-label" data-i18n="chooseResume">Choose Resume File</label>
                     <span id="fileName" style="margin-left: 10px; color: #666;"></span>
                 </div>
-                <button id="uploadBtn" class="upload-btn" disabled>Analyze Resume</button>
+                <button id="uploadBtn" class="upload-btn" disabled data-i18n="analyzeResume">Analyze Resume</button>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                    Supported formats: PDF, DOCX, TXT (Max 5MB)
+                    <span data-i18n="supportedFormats">Supported formats: PDF, DOCX, TXT (Max 5MB)</span>
                 </p>
             </div>
             
@@ -362,46 +486,339 @@
             <div id="resultsSection" class="results-section">
                 <!-- Score Card -->
                 <div class="score-card">
-                    <div>Your Skill Match Score</div>
+                    <div data-i18n="skillMatchScore">Your Skill Match Score</div>
                     <div class="score-value" id="skillScore">--</div>
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="matchCount">0</div>
-                            <div class="stat-label">Matching</div>
+                            <div class="stat-label" data-i18n="matching">Matching</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="gapCount">0</div>
-                            <div class="stat-label">Missing</div>
+                            <div class="stat-label" data-i18n="missing">Missing</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="totalCount">0</div>
-                            <div class="stat-label">Total</div>
+                            <div class="stat-label" data-i18n="total">Total</div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Matching Skills -->
                 <div class="skill-panel">
-                    <h3>✅ Your Skills (In Demand)</h3>
+                    <h3 data-i18n="yourSkillsDemand">✅ Your Skills (In Demand)</h3>
                     <div id="matchingSkills"></div>
                 </div>
                 
                 <!-- Missing Skills -->
                 <div class="skill-panel">
-                    <h3>⚠️ Missing High-Demand Skills</h3>
+                    <h3 data-i18n="missingSkillsTitle">⚠️ Missing High-Demand Skills</h3>
                     <div id="missingSkills"></div>
                 </div>
                 
                 <!-- Recommendations -->
                 <div class="skill-panel">
-                    <h3>💡 Learning Recommendations</h3>
+                    <h3 data-i18n="learningRecommendations">💡 Learning Recommendations</h3>
                     <div id="recommendations"></div>
+                </div>
+
+                <!-- Job Recommendations -->
+                <div class="skill-panel">
+                    <h3 data-i18n="jobRecommendations">🧭 Best Job Recommendations for You</h3>
+                    <div id="jobRecommendations"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        const TRANSLATIONS = {
+            en: {
+                appTitle: '🎯 Skill Gap Radar - Live Job Market Analysis',
+                languageLabel: 'Language',
+                marketTitle: '📊 Real-Time Job Market Demand',
+                statusConnecting: 'Connecting to server...',
+                statusConnected: '✓ Connected - Receiving live updates',
+                statusError: '✗ Connection error',
+                statusDisconnected: '✗ Disconnected - Attempting to reconnect...',
+                targetRole: 'Target Role',
+                targetCompany: 'Target Company',
+                region: 'Region',
+                skillsShown: 'Skills Shown',
+                allRoles: 'All Roles',
+                allCompanies: 'All Companies',
+                allRegions: 'All Regions',
+                apply: 'Apply',
+                filterHint: 'Filters are linked. Choosing a region updates available roles and companies.',
+                dataSource: 'Data source: {source}',
+                topSkillsMarket: 'Top Skills in Selected Market',
+                topTitlesRegion: 'Top Job Titles in Selected Region',
+                resumeTitle: '📄 Resume Skill Gap Analysis',
+                uploadResumeDesc: 'Upload your resume to analyze skill gaps',
+                chooseResume: 'Choose Resume File',
+                analyzeResume: 'Analyze Resume',
+                analyzing: 'Analyzing...',
+                uploadAnalyzing: 'Uploading and analyzing resume...',
+                supportedFormats: 'Supported formats: PDF, DOCX, TXT (Max 5MB)',
+                skillMatchScore: 'Your Skill Match Score',
+                matching: 'Matching',
+                missing: 'Missing',
+                total: 'Total',
+                yourSkillsDemand: '✅ Your Skills (In Demand)',
+                missingSkillsTitle: '⚠️ Missing High-Demand Skills',
+                learningRecommendations: '💡 Learning Recommendations',
+                jobRecommendations: '🧭 Best Job Recommendations for You',
+                skillDemandCount: 'Skill Demand Count',
+                openings: 'Openings',
+                topSkillsJobMarket: 'Top Skills in Job Market',
+                selectRegionTopJobs: 'Select a region to view top jobs.',
+                noRegionalData: 'No regional job data available.',
+                noJobsRegion: 'No jobs found for {region}.',
+                updatedMarketTrends: 'Updated market demand and region job trends.',
+                extractedSkillsSuccess: '✅ Successfully extracted {count} skills from your resume!',
+                uploadFailed: 'Upload failed',
+                errorPrefix: '❌ Error: {message}',
+                gapAnalysisFailed: 'Gap analysis failed',
+                gapAnalysisError: '❌ Error analyzing skill gap: {message}',
+                noMatchingSkills: 'No matching skills found with current job market demand.',
+                allSkillsGreat: 'Great! You have all the in-demand skills.',
+                noLearningRecommendations: 'No recommendations at this time.',
+                noJobRecommendations: 'No job recommendations found yet. Try adjusting filters or upload a broader resume.',
+                fitScore: 'Fit Score',
+                matchedSkills: 'Matched Skills',
+                missingSkills: 'Missing Skills',
+                applyNow: 'Apply Now',
+                sourceUnknown: 'unknown',
+                extractionMeta: 'Extraction mode: {mode} | Model: {model} | Skills detected: {count} | Fallback used: {fallback}'
+            },
+            es: {
+                appTitle: '🎯 Skill Gap Radar - Analisis en vivo del mercado laboral',
+                languageLabel: 'Idioma',
+                marketTitle: '📊 Demanda del mercado laboral en tiempo real',
+                statusConnecting: 'Conectando al servidor...',
+                statusConnected: '✓ Conectado - Recibiendo actualizaciones en vivo',
+                statusError: '✗ Error de conexion',
+                statusDisconnected: '✗ Desconectado - Reintentando conexion...',
+                targetRole: 'Rol objetivo',
+                targetCompany: 'Empresa objetivo',
+                region: 'Region',
+                skillsShown: 'Habilidades mostradas',
+                allRoles: 'Todos los roles',
+                allCompanies: 'Todas las empresas',
+                allRegions: 'Todas las regiones',
+                apply: 'Aplicar',
+                filterHint: 'Los filtros estan vinculados. Al elegir una region se actualizan roles y empresas.',
+                dataSource: 'Fuente de datos: {source}',
+                topSkillsMarket: 'Principales habilidades del mercado seleccionado',
+                topTitlesRegion: 'Principales puestos por region',
+                resumeTitle: '📄 Analisis de brecha de habilidades del CV',
+                uploadResumeDesc: 'Sube tu CV para analizar brechas de habilidades',
+                chooseResume: 'Elegir archivo de CV',
+                analyzeResume: 'Analizar CV',
+                analyzing: 'Analizando...',
+                uploadAnalyzing: 'Subiendo y analizando CV...',
+                supportedFormats: 'Formatos soportados: PDF, DOCX, TXT (Max 5MB)',
+                skillMatchScore: 'Tu puntuacion de ajuste de habilidades',
+                matching: 'Coinciden',
+                missing: 'Faltan',
+                total: 'Total',
+                yourSkillsDemand: '✅ Tus habilidades (en demanda)',
+                missingSkillsTitle: '⚠️ Habilidades faltantes de alta demanda',
+                learningRecommendations: '💡 Recomendaciones de aprendizaje',
+                jobRecommendations: '🧭 Mejores recomendaciones de empleo para ti',
+                skillDemandCount: 'Conteo de demanda de habilidades',
+                openings: 'Vacantes',
+                topSkillsJobMarket: 'Principales habilidades en el mercado',
+                selectRegionTopJobs: 'Selecciona una region para ver puestos principales.',
+                noRegionalData: 'No hay datos regionales disponibles.',
+                noJobsRegion: 'No se encontraron puestos para {region}.',
+                updatedMarketTrends: 'Demanda y tendencias regionales actualizadas.',
+                extractedSkillsSuccess: '✅ Se extrajeron {count} habilidades de tu CV.',
+                uploadFailed: 'Fallo la carga',
+                errorPrefix: '❌ Error: {message}',
+                gapAnalysisFailed: 'Fallo el analisis de brecha',
+                gapAnalysisError: '❌ Error al analizar brecha de habilidades: {message}',
+                noMatchingSkills: 'No hay habilidades coincidentes con la demanda actual.',
+                allSkillsGreat: 'Excelente. Tienes todas las habilidades demandadas.',
+                noLearningRecommendations: 'No hay recomendaciones por ahora.',
+                noJobRecommendations: 'No hay recomendaciones de empleo aun. Ajusta filtros o sube un CV mas amplio.',
+                fitScore: 'Puntaje de ajuste',
+                matchedSkills: 'Habilidades coincidentes',
+                missingSkills: 'Habilidades faltantes',
+                applyNow: 'Postular ahora',
+                sourceUnknown: 'desconocido',
+                extractionMeta: 'Modo de extraccion: {mode} | Modelo: {model} | Habilidades detectadas: {count} | Uso fallback: {fallback}'
+            },
+            fr: {
+                appTitle: '🎯 Skill Gap Radar - Analyse du marche de l emploi en direct',
+                languageLabel: 'Langue',
+                marketTitle: '📊 Demande du marche de l emploi en temps reel',
+                statusConnecting: 'Connexion au serveur...',
+                statusConnected: '✓ Connecte - Reception des mises a jour en direct',
+                statusError: '✗ Erreur de connexion',
+                statusDisconnected: '✗ Deconnecte - Nouvelle tentative...',
+                targetRole: 'Role cible',
+                targetCompany: 'Entreprise cible',
+                region: 'Region',
+                skillsShown: 'Competences affichees',
+                allRoles: 'Tous les roles',
+                allCompanies: 'Toutes les entreprises',
+                allRegions: 'Toutes les regions',
+                apply: 'Appliquer',
+                filterHint: 'Les filtres sont lies. Choisir une region met a jour roles et entreprises.',
+                dataSource: 'Source des donnees: {source}',
+                topSkillsMarket: 'Competences principales du marche selectionne',
+                topTitlesRegion: 'Principaux postes par region',
+                resumeTitle: '📄 Analyse des ecarts de competences du CV',
+                uploadResumeDesc: 'Telechargez votre CV pour analyser les ecarts de competences',
+                chooseResume: 'Choisir un fichier CV',
+                analyzeResume: 'Analyser le CV',
+                analyzing: 'Analyse en cours...',
+                uploadAnalyzing: 'Telechargement et analyse du CV...',
+                supportedFormats: 'Formats pris en charge: PDF, DOCX, TXT (Max 5MB)',
+                skillMatchScore: 'Votre score de correspondance des competences',
+                matching: 'Correspondent',
+                missing: 'Manquantes',
+                total: 'Total',
+                yourSkillsDemand: '✅ Vos competences (en demande)',
+                missingSkillsTitle: '⚠️ Competences manquantes a forte demande',
+                learningRecommendations: '💡 Recommandations d apprentissage',
+                jobRecommendations: '🧭 Meilleures recommandations d emplois',
+                skillDemandCount: 'Nombre de demandes de competences',
+                openings: 'Offres',
+                topSkillsJobMarket: 'Top competences du marche de l emploi',
+                selectRegionTopJobs: 'Selectionnez une region pour voir les meilleurs postes.',
+                noRegionalData: 'Aucune donnee regionale disponible.',
+                noJobsRegion: 'Aucun poste trouve pour {region}.',
+                updatedMarketTrends: 'Demande du marche et tendances regionales mises a jour.',
+                extractedSkillsSuccess: '✅ {count} competences extraites de votre CV.',
+                uploadFailed: 'Echec du televersement',
+                errorPrefix: '❌ Erreur: {message}',
+                gapAnalysisFailed: 'Echec de l analyse des ecarts',
+                gapAnalysisError: '❌ Erreur lors de l analyse des ecarts: {message}',
+                noMatchingSkills: 'Aucune competence correspondante avec la demande actuelle.',
+                allSkillsGreat: 'Excellent. Vous avez toutes les competences en demande.',
+                noLearningRecommendations: 'Aucune recommandation pour le moment.',
+                noJobRecommendations: 'Aucune recommandation de poste pour le moment. Ajustez les filtres ou telechargez un CV plus complet.',
+                fitScore: 'Score de compatibilite',
+                matchedSkills: 'Competences correspondantes',
+                missingSkills: 'Competences manquantes',
+                applyNow: 'Postuler',
+                sourceUnknown: 'inconnu',
+                extractionMeta: 'Mode extraction: {mode} | Modele: {model} | Competences detectees: {count} | Fallback utilise: {fallback}'
+            },
+            hi: {
+                appTitle: '🎯 स्किल गैप रडार - लाइव जॉब मार्केट विश्लेषण',
+                languageLabel: 'भाषा',
+                marketTitle: '📊 रियल-टाइम जॉब मार्केट डिमांड',
+                targetRole: 'लक्षित भूमिका',
+                targetCompany: 'लक्षित कंपनी',
+                region: 'क्षेत्र',
+                skillsShown: 'दिखाई गई स्किल्स',
+                allRoles: 'सभी भूमिकाएं',
+                allCompanies: 'सभी कंपनियां',
+                allRegions: 'सभी क्षेत्र',
+                apply: 'लागू करें',
+                resumeTitle: '📄 रिज्यूमे स्किल गैप विश्लेषण',
+                uploadResumeDesc: 'स्किल गैप विश्लेषण के लिए अपना रिज्यूमे अपलोड करें',
+                chooseResume: 'रिज्यूमे फ़ाइल चुनें',
+                analyzeResume: 'रिज्यूमे विश्लेषण करें',
+                jobRecommendations: '🧭 आपके लिए सर्वोत्तम जॉब सिफारिशें',
+                fitScore: 'फिट स्कोर',
+                matchedSkills: 'मिलती-जुलती स्किल्स',
+                missingSkills: 'कमी वाली स्किल्स',
+                applyNow: 'अभी आवेदन करें'
+            },
+            ta: {
+                appTitle: '🎯 திறன் இடைவெளி ரேடார் - நேரடி வேலை சந்தை பகுப்பாய்வு',
+                languageLabel: 'மொழி',
+                marketTitle: '📊 நேரடி வேலை சந்தை தேவை',
+                targetRole: 'இலக்கு பங்கு',
+                targetCompany: 'இலக்கு நிறுவனம்',
+                region: 'பகுதி',
+                skillsShown: 'காட்டப்படும் திறன்கள்',
+                allRoles: 'அனைத்து பணிகளும்',
+                allCompanies: 'அனைத்து நிறுவனங்களும்',
+                allRegions: 'அனைத்து பகுதிகளும்',
+                apply: 'பயன்படுத்து',
+                resumeTitle: '📄 ரெச்யூமே திறன் இடைவெளி பகுப்பாய்வு',
+                uploadResumeDesc: 'திறன் இடைவெளியை பகுப்பாய்வு செய்ய உங்கள் ரெச்யூமேவை பதிவேற்றவும்',
+                chooseResume: 'ரெச்யூமே கோப்பை தேர்வு செய்க',
+                analyzeResume: 'ரெச்யூமே பகுப்பாய்வு',
+                jobRecommendations: '🧭 உங்களுக்கு சிறந்த வேலை பரிந்துரைகள்',
+                fitScore: 'பொருத்த மதிப்பெண்',
+                matchedSkills: 'பொருந்தும் திறன்கள்',
+                missingSkills: 'குறைவான திறன்கள்',
+                applyNow: 'இப்போது விண்ணப்பிக்கவும்'
+            },
+            te: {
+                appTitle: '🎯 స్కిల్ గ్యాప్ రాడార్ - లైవ్ జాబ్ మార్కెట్ విశ్లేషణ',
+                languageLabel: 'భాష',
+                marketTitle: '📊 రియల్-టైమ్ జాబ్ మార్కెట్ డిమాండ్',
+                targetRole: 'లక్ష్య పాత్ర',
+                targetCompany: 'లక్ష్య సంస్థ',
+                region: 'ప్రాంతం',
+                skillsShown: 'చూపించే నైపుణ్యాలు',
+                allRoles: 'అన్ని పాత్రలు',
+                allCompanies: 'అన్ని కంపెనీలు',
+                allRegions: 'అన్ని ప్రాంతాలు',
+                apply: 'వర్తించు',
+                resumeTitle: '📄 రెజ్యూమే స్కిల్ గ్యాప్ విశ్లేషణ',
+                uploadResumeDesc: 'స్కిల్ గ్యాప్ విశ్లేషణకు మీ రెజ్యూమేను అప్‌లోడ్ చేయండి',
+                chooseResume: 'రెజ్యూమే ఫైల్ ఎంచుకోండి',
+                analyzeResume: 'రెజ్యూమే విశ్లేషించు',
+                jobRecommendations: '🧭 మీకు ఉత్తమ ఉద్యోగ సిఫార్సులు',
+                fitScore: 'ఫిట్ స్కోర్',
+                matchedSkills: 'సరిపోలిన నైపుణ్యాలు',
+                missingSkills: 'లేని నైపుణ్యాలు',
+                applyNow: 'ఇప్పుడే దరఖాస్తు చేయండి'
+            },
+            ml: {
+                appTitle: '🎯 സ്കിൽ ഗ്യാപ് റഡാർ - തത്സമയ ജോലി വിപണി വിശകലനം',
+                languageLabel: 'ഭാഷ',
+                marketTitle: '📊 തത്സമയ ജോലി വിപണി ആവശ്യകത',
+                targetRole: 'ലക്ഷ്യ പദവി',
+                targetCompany: 'ലക്ഷ്യ കമ്പനി',
+                region: 'പ്രദേശം',
+                skillsShown: 'കാണിക്കുന്ന സ്കില്ലുകൾ',
+                allRoles: 'എല്ലാ പദവികളും',
+                allCompanies: 'എല്ലാ കമ്പനികളും',
+                allRegions: 'എല്ലാ പ്രദേശങ്ങളും',
+                apply: 'പ്രയോഗിക്കുക',
+                resumeTitle: '📄 റെസ്യൂമെ സ്കിൽ ഗ്യാപ് വിശകലനം',
+                uploadResumeDesc: 'സ്കിൽ ഗ്യാപ് വിശകലനത്തിനായി നിങ്ങളുടെ റെസ്യൂമെ അപ്‌ലോഡ് ചെയ്യുക',
+                chooseResume: 'റെസ്യൂമെ ഫയൽ തിരഞ്ഞെടുക്കുക',
+                analyzeResume: 'റെസ്യൂമെ വിശകലനം',
+                jobRecommendations: '🧭 നിങ്ങള്‍ക്കുള്ള മികച്ച ജോലി ശുപാര്‍ശകള്‍',
+                fitScore: 'ഫിറ്റ് സ്‌കോർ',
+                matchedSkills: 'പൊരുത്തപ്പെട്ട സ്കില്ലുകൾ',
+                missingSkills: 'കുറവുള്ള സ്കില്ലുകൾ',
+                applyNow: 'ഇപ്പോൾ അപേക്ഷിക്കുക'
+            },
+            kn: {
+                appTitle: '🎯 ಸ್ಕಿಲ್ ಗ್ಯಾಪ್ ರಡಾರ್ - ಲೈವ್ ಜಾಬ್ ಮಾರ್ಕೆಟ್ ವಿಶ್ಲೇಷಣೆ',
+                languageLabel: 'ಭಾಷೆ',
+                marketTitle: '📊 ರಿಯಲ್-ಟೈಮ್ ಜಾಬ್ ಮಾರ್ಕೆಟ್ ಬೇಡಿಕೆ',
+                targetRole: 'ಲಕ್ಷ್ಯ ಪಾತ್ರ',
+                targetCompany: 'ಲಕ್ಷ್ಯ ಕಂಪನಿ',
+                region: 'ಪ್ರದೇಶ',
+                skillsShown: 'ತೋರಿಸುವ ಕೌಶಲ್ಯಗಳು',
+                allRoles: 'ಎಲ್ಲಾ ಪಾತ್ರಗಳು',
+                allCompanies: 'ಎಲ್ಲಾ ಕಂಪನಿಗಳು',
+                allRegions: 'ಎಲ್ಲಾ ಪ್ರದೇಶಗಳು',
+                apply: 'ಅನ್ವಯಿಸಿ',
+                resumeTitle: '📄 ರೆಸ್ಯೂಮ್ ಸ್ಕಿಲ್ ಗ್ಯಾಪ್ ವಿಶ್ಲೇಷಣೆ',
+                uploadResumeDesc: 'ಸ್ಕಿಲ್ ಗ್ಯಾಪ್ ವಿಶ್ಲೇಷಿಸಲು ನಿಮ್ಮ ರೆಸ್ಯೂಮ್ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ',
+                chooseResume: 'ರೆಸ್ಯೂಮ್ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ',
+                analyzeResume: 'ರೆಸ್ಯೂಮ್ ವಿಶ್ಲೇಷಿಸಿ',
+                jobRecommendations: '🧭 ನಿಮಗಾಗಿ ಅತ್ಯುತ್ತಮ ಉದ್ಯೋಗ ಶಿಫಾರಸುಗಳು',
+                fitScore: 'ಫಿಟ್ ಸ್ಕೋರ್',
+                matchedSkills: 'ಹೊಂದಿದ ಕೌಶಲ್ಯಗಳು',
+                missingSkills: 'ಕಡಿಮೆ ಇರುವ ಕೌಶಲ್ಯಗಳು',
+                applyNow: 'ಈಗಲೇ ಅರ್ಜಿ ಹಾಕಿ'
+            }
+        };
+
         const ctx = document.getElementById('skillsChart');
         const statusDiv = document.getElementById('status');
         const resumeFileInput = document.getElementById('resumeFile');
@@ -416,15 +833,51 @@
         const refreshFiltersBtn = document.getElementById('refreshFiltersBtn');
         const extractionMeta = document.getElementById('extractionMeta');
         const topJobsCtx = document.getElementById('topJobsChart');
-        
+        const languageSelect = document.getElementById('languageSelect');
+        const jobRecommendationsDiv = document.getElementById('jobRecommendations');
+
         let extractedSkills = [];
+        let currentLanguage = pickInitialLanguage();
+
+        function pickInitialLanguage() {
+            const saved = localStorage.getItem('dashboard_language');
+            if (saved && TRANSLATIONS[saved]) return saved;
+            const lang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+            if (TRANSLATIONS[lang]) return lang;
+            return 'en';
+        }
+
+        function t(key, vars = {}) {
+            const fallback = TRANSLATIONS.en[key] || key;
+            let text = (TRANSLATIONS[currentLanguage] && TRANSLATIONS[currentLanguage][key]) || fallback;
+            Object.entries(vars).forEach(([name, value]) => {
+                text = text.replace(new RegExp(`\\{${name}\\}`, 'g'), String(value));
+            });
+            return text;
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach((el) => {
+                const key = el.getAttribute('data-i18n');
+                el.textContent = t(key);
+            });
+
+            chart.data.datasets[0].label = t('skillDemandCount');
+            chart.options.plugins.title.text = t('topSkillsJobMarket');
+            chart.update();
+
+            topJobsChart.data.datasets[0].label = t('openings');
+            topJobsChart.update();
+
+            uploadBtn.textContent = uploadBtn.disabled ? uploadBtn.textContent : t('analyzeResume');
+        }
 
         let chart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Skill Demand Count',
+                    label: t('skillDemandCount'),
                     data: [],
                     backgroundColor: 'rgba(54, 162, 235, 0.6)',
                     borderColor: 'rgba(54, 162, 235, 1)',
@@ -448,7 +901,7 @@
                     },
                     title: {
                         display: true,
-                        text: 'Top Skills in Job Market'
+                        text: t('topSkillsJobMarket')
                     }
                 }
             }
@@ -459,7 +912,7 @@
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Openings',
+                    label: t('openings'),
                     data: [],
                     backgroundColor: 'rgba(0, 178, 169, 0.65)',
                     borderColor: 'rgba(0, 128, 122, 1)',
@@ -479,30 +932,29 @@
             }
         });
 
+        languageSelect.value = currentLanguage;
+        applyTranslations();
         loadMarketContext();
         loadSkillDemand();
         loadTopJobsByRegion();
+        clearTopJobsChart(t('selectRegionTopJobs'));
 
-        // Keep data fresh even if websocket payload does not match current filters.
         setInterval(loadSkillDemand, 120000);
 
-        // Connect to WebSocket for live updates
         const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
         socket.onopen = function() {
             console.log('WebSocket connected');
-            statusDiv.textContent = '✓ Connected - Receiving live updates';
+            statusDiv.textContent = t('statusConnected');
             statusDiv.className = 'status connected';
         };
 
         socket.onmessage = function(event) {
-            console.log('Received data:', event.data);
-            
             try {
                 const data = JSON.parse(event.data);
                 if (!roleFilter.value && !companyFilter.value && !regionFilter.value) {
                     updateChart(data);
-                    clearTopJobsChart('Select a region to view top jobs.');
+                    clearTopJobsChart(t('selectRegionTopJobs'));
                 }
             } catch (e) {
                 console.error('Error parsing message:', e);
@@ -511,20 +963,27 @@
 
         socket.onerror = function(error) {
             console.error('WebSocket error:', error);
-            statusDiv.textContent = '✗ Connection error';
+            statusDiv.textContent = t('statusError');
             statusDiv.className = 'status disconnected';
         };
 
         socket.onclose = function() {
-            console.log('WebSocket closed');
-            statusDiv.textContent = '✗ Disconnected - Attempting to reconnect...';
+            statusDiv.textContent = t('statusDisconnected');
             statusDiv.className = 'status disconnected';
-            
-            // Attempt to reconnect after 3 seconds
             setTimeout(() => {
                 location.reload();
             }, 3000);
         };
+
+        languageSelect.addEventListener('change', () => {
+            currentLanguage = languageSelect.value;
+            localStorage.setItem('dashboard_language', currentLanguage);
+            applyTranslations();
+            clearTopJobsChart(regionFilter.value ? t('noRegionalData') : t('selectRegionTopJobs'));
+            if (extractedSkills.length) {
+                analyzeSkillGap(extractedSkills);
+            }
+        });
 
         function updateChart(data) {
             if (data.skills && data.counts) {
@@ -545,9 +1004,9 @@
                 if (!response.ok) return;
 
                 const data = await response.json();
-                populateSelect(roleFilter, data.roles || [], 'All Roles');
-                populateSelect(companyFilter, data.companies || [], 'All Companies');
-                populateSelect(regionFilter, data.regions || [], 'All Regions');
+                populateSelect(roleFilter, data.roles || [], t('allRoles'));
+                populateSelect(companyFilter, data.companies || [], t('allCompanies'));
+                populateSelect(regionFilter, data.regions || [], t('allRegions'));
             } catch (error) {
                 console.error('Error loading context:', error);
             }
@@ -584,8 +1043,8 @@
 
                 const data = await response.json();
                 updateChart(data);
-                const sourceText = data.source ? `Data source: ${data.source}` : '';
-                document.getElementById('filterHint').textContent = sourceText || 'Filters are linked. Choosing a region updates available roles and companies.';
+                const sourceText = data.source ? t('dataSource', { source: data.source }) : '';
+                document.getElementById('filterHint').textContent = sourceText || t('filterHint');
             } catch (error) {
                 console.error('Error loading skill demand:', error);
             }
@@ -594,7 +1053,7 @@
         async function loadTopJobsByRegion() {
             const region = regionFilter.value;
             if (!region) {
-                clearTopJobsChart('Select a region to view top jobs.');
+                clearTopJobsChart(t('selectRegionTopJobs'));
                 return;
             }
 
@@ -604,14 +1063,14 @@
                 params.set('limit', '10');
                 const response = await fetch(`/api/top_jobs_by_region?${params.toString()}`);
                 if (!response.ok) {
-                    clearTopJobsChart('No regional job data available.');
+                    clearTopJobsChart(t('noRegionalData'));
                     return;
                 }
 
                 const data = await response.json();
                 const jobs = data.jobs || [];
                 if (!jobs.length) {
-                    clearTopJobsChart(`No jobs found for ${region}.`);
+                    clearTopJobsChart(t('noJobsRegion', { region }));
                     return;
                 }
 
@@ -620,7 +1079,7 @@
                 topJobsChart.update();
             } catch (error) {
                 console.error('Error loading top jobs by region:', error);
-                clearTopJobsChart('No regional job data available.');
+                clearTopJobsChart(t('noRegionalData'));
             }
         }
 
@@ -643,75 +1102,70 @@
             if (extractedSkills.length) {
                 await analyzeSkillGap(extractedSkills);
             }
-            showMessage('Updated market demand and region job trends.', 'success');
+            showMessage(t('updatedMarketTrends'), 'success');
         });
-        
-        // Resume upload functionality
+
         resumeFileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 fileNameSpan.textContent = file.name;
                 uploadBtn.disabled = false;
+                uploadBtn.textContent = t('analyzeResume');
             } else {
                 fileNameSpan.textContent = '';
                 uploadBtn.disabled = true;
             }
         });
-        
+
         uploadBtn.addEventListener('click', async function() {
             const file = resumeFileInput.files[0];
             if (!file) return;
-            
-            // Disable button and show loading
+
             uploadBtn.disabled = true;
-            uploadBtn.textContent = 'Analyzing...';
-            showMessage('Uploading and analyzing resume...', 'info');
-            
+            uploadBtn.textContent = t('analyzing');
+            showMessage(t('uploadAnalyzing'), 'info');
+
             try {
-                // Upload resume
                 const formData = new FormData();
                 formData.append('file', file);
-                
+
                 const uploadResponse = await fetch('/api/upload_resume', {
                     method: 'POST',
                     body: formData
                 });
-                
+
                 if (!uploadResponse.ok) {
                     const error = await uploadResponse.json();
-                    throw new Error(error.detail || 'Upload failed');
+                    throw new Error(error.detail || t('uploadFailed'));
                 }
-                
+
                 const uploadResult = await uploadResponse.json();
-                console.log('Upload result:', uploadResult);
-                
-                extractedSkills = uploadResult.skills;
+                extractedSkills = uploadResult.skills || [];
 
                 if (uploadResult.extraction_meta) {
                     const meta = uploadResult.extraction_meta;
                     extractionMeta.style.display = 'block';
-                    extractionMeta.textContent = `Extraction mode: ${meta.extraction_mode || 'unknown'} | Model: ${meta.model_version || 'n/a'} | Skills detected: ${meta.skills_detected_total || uploadResult.skills_found} | Fallback used: ${meta.used_fallback ? 'yes' : 'no'}`;
+                    extractionMeta.textContent = t('extractionMeta', {
+                        mode: meta.extraction_mode || t('sourceUnknown'),
+                        model: meta.model_version || 'n/a',
+                        count: meta.skills_detected_total || uploadResult.skills_found || 0,
+                        fallback: meta.used_fallback ? 'yes' : 'no',
+                    });
                 } else {
                     extractionMeta.style.display = 'none';
                 }
-                
-                showMessage(
-                    `✅ Successfully extracted ${uploadResult.skills_found} skills from your resume!`,
-                    'success'
-                );
-                
-                // Analyze skill gap
+
+                showMessage(t('extractedSkillsSuccess', { count: uploadResult.skills_found || 0 }), 'success');
                 await analyzeSkillGap(extractedSkills);
-                
             } catch (error) {
                 console.error('Error:', error);
-                showMessage(`❌ Error: ${error.message}`, 'error');
+                showMessage(t('errorPrefix', { message: error.message }), 'error');
             } finally {
                 uploadBtn.disabled = false;
-                uploadBtn.textContent = 'Analyze Resume';
+                uploadBtn.textContent = t('analyzeResume');
             }
         });
-        
+
         async function analyzeSkillGap(resumeSkills) {
             try {
                 const response = await fetch('/api/analyze_gap', {
@@ -727,53 +1181,74 @@
                         top_n: 30
                     })
                 });
-                
+
                 if (!response.ok) {
-                    throw new Error('Gap analysis failed');
+                    throw new Error(t('gapAnalysisFailed'));
                 }
-                
+
                 const result = await response.json();
-                console.log('Gap analysis result:', result);
-                
                 displayGapAnalysis(result);
-                
+                await loadJobRecommendations(resumeSkills);
             } catch (error) {
                 console.error('Error analyzing gap:', error);
-                showMessage(`❌ Error analyzing skill gap: ${error.message}`, 'error');
+                showMessage(t('gapAnalysisError', { message: error.message }), 'error');
             }
         }
-        
+
+        async function loadJobRecommendations(resumeSkills) {
+            try {
+                const response = await fetch('/api/recommend_jobs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        resume_skills: resumeSkills,
+                        role: roleFilter.value || null,
+                        company: companyFilter.value || null,
+                        region: regionFilter.value || null,
+                        limit: 8
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('recommendation_api_failed');
+                }
+
+                const result = await response.json();
+                displayJobRecommendations(result.jobs || []);
+            } catch (error) {
+                console.error('Error loading job recommendations:', error);
+                displayJobRecommendations([]);
+            }
+        }
+
         function displayGapAnalysis(result) {
-            // Show results section
             resultsSection.classList.add('show');
-            
-            // Update score card
+
             document.getElementById('skillScore').textContent = result.skill_score;
             document.getElementById('matchCount').textContent = result.match_count;
             document.getElementById('gapCount').textContent = result.gap_count;
             document.getElementById('totalCount').textContent = result.resume_skill_count;
-            
-            // Display matching skills
+
             const matchingSkillsDiv = document.getElementById('matchingSkills');
             if (result.matching_skills && result.matching_skills.length > 0) {
                 matchingSkillsDiv.innerHTML = result.matching_skills
                     .map(skill => `<span class="skill-badge">${skill.skill} (${skill.demand_count})</span>`)
                     .join('');
             } else {
-                matchingSkillsDiv.innerHTML = '<p style="color: #666;">No matching skills found with current job market demand.</p>';
+                matchingSkillsDiv.innerHTML = `<p style="color: #666;">${t('noMatchingSkills')}</p>`;
             }
-            
-            // Display missing skills
+
             const missingSkillsDiv = document.getElementById('missingSkills');
             if (result.missing_skills && result.missing_skills.length > 0) {
                 missingSkillsDiv.innerHTML = result.missing_skills
                     .map(skill => `<span class="skill-badge missing">${skill.skill} (${skill.demand_count})</span>`)
                     .join('');
             } else {
-                missingSkillsDiv.innerHTML = '<p style="color: #666;">Great! You have all the in-demand skills.</p>';
+                missingSkillsDiv.innerHTML = `<p style="color: #666;">${t('allSkillsGreat')}</p>`;
             }
-            
-            // Display recommendations
+
             const recommendationsDiv = document.getElementById('recommendations');
             if (result.recommendations && result.recommendations.length > 0) {
                 recommendationsDiv.innerHTML = result.recommendations
@@ -786,21 +1261,42 @@
                     `)
                     .join('');
             } else {
-                recommendationsDiv.innerHTML = '<p style="color: #666;">No recommendations at this time.</p>';
+                recommendationsDiv.innerHTML = `<p style="color: #666;">${t('noLearningRecommendations')}</p>`;
             }
-            
-            // Scroll to results
+
             resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-        
+
+        function displayJobRecommendations(jobs) {
+            if (!jobs.length) {
+                jobRecommendationsDiv.innerHTML = `<p style="color: #666;">${t('noJobRecommendations')}</p>`;
+                return;
+            }
+
+            jobRecommendationsDiv.innerHTML = jobs.map((job) => {
+                const matchedSkills = (job.matched_skills || []).slice(0, 8).join(', ');
+                const missingSkills = (job.missing_skills || []).slice(0, 6).join(', ');
+                const url = job.url && job.url.trim() ? job.url : '';
+                return `
+                    <div class="job-card">
+                        <h4>${job.title}</h4>
+                        <div class="job-meta">${job.company} | ${job.location || '-'}</div>
+                        <div class="fit-pill">${t('fitScore')}: ${job.fit_score}%</div>
+                        <div><strong>${t('matchedSkills')}:</strong> ${matchedSkills || '-'}</div>
+                        <div style="margin-top: 5px;"><strong>${t('missingSkills')}:</strong> ${missingSkills || '-'}</div>
+                        ${url ? `<a class="job-link" href="${url}" target="_blank" rel="noopener noreferrer">${t('applyNow')}</a>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
         function showMessage(text, type) {
-            const className = type === 'error' ? 'error-message' : 
-                              type === 'success' ? 'success-message' : 
+            const className = type === 'error' ? 'error-message' :
+                              type === 'success' ? 'success-message' :
                               'loading';
-            
+
             messageContainer.innerHTML = `<div class="${className}">${text}</div>`;
-            
-            // Auto-clear after 5 seconds for non-error messages
+
             if (type !== 'error') {
                 setTimeout(() => {
                     messageContainer.innerHTML = '';

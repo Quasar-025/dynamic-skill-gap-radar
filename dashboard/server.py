@@ -3,6 +3,8 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
+import ast
+from datetime import timedelta
 import sys
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
@@ -46,6 +48,15 @@ class SkillGapRequest(BaseModel):
     company: Optional[str] = None
     region: Optional[str] = None
     top_n: int = 20
+
+
+class JobRecommendationRequest(BaseModel):
+    resume_skills: List[str]
+    role: Optional[str] = None
+    company: Optional[str] = None
+    region: Optional[str] = None
+    limit: int = 8
+    max_age_days: int = 30
 
 app.add_middleware(
     CORSMiddleware,
@@ -357,6 +368,165 @@ async def get_skill_demand(
     }
 
 
+@app.post("/api/recommend_jobs")
+async def recommend_jobs(request: JobRecommendationRequest):
+    """
+    Recommend best-matching jobs from current market postings for uploaded resume skills.
+    """
+    if not request.resume_skills:
+        raise HTTPException(status_code=400, detail="Resume skills list cannot be empty")
+
+    try:
+        import pandas as pd
+
+        postings_path = Path(__file__).parent.parent / "data" / "processed" / "market" / "job_postings.parquet"
+        if not postings_path.exists():
+            return {
+                "jobs": [],
+                "total": 0,
+                "filters": {
+                    "role": request.role,
+                    "company": request.company,
+                    "region": request.region,
+                },
+                "source": "snapshot_missing",
+            }
+
+        df = pd.read_parquet(postings_path)
+        if df.empty:
+            return {
+                "jobs": [],
+                "total": 0,
+                "filters": {
+                    "role": request.role,
+                    "company": request.company,
+                    "region": request.region,
+                },
+                "source": "snapshot_empty",
+            }
+
+        if "scraped_at" in df.columns:
+            ts = pd.to_datetime(df["scraped_at"], errors="coerce", utc=True)
+            latest = ts.max()
+            max_age_days = max(1, min(int(request.max_age_days), 180))
+            if pd.notna(latest):
+                cutoff = latest - timedelta(days=max_age_days)
+                df = df[ts >= cutoff]
+
+        if request.role and "role" in df.columns:
+            df = df[df["role"].astype(str).str.lower().str.strip() == request.role.lower().strip()]
+        if request.company and "company" in df.columns:
+            df = df[df["company"].astype(str).str.lower().str.strip() == request.company.lower().strip()]
+        if request.region and "location" in df.columns:
+            df = df[df["location"].astype(str).str.lower().str.strip() == request.region.lower().strip()]
+
+        if df.empty:
+            return {
+                "jobs": [],
+                "total": 0,
+                "filters": {
+                    "role": request.role,
+                    "company": request.company,
+                    "region": request.region,
+                },
+                "source": "snapshot_no_matches",
+            }
+
+        if "scraped_at" in df.columns:
+            df = df.sort_values(by="scraped_at", ascending=False)
+
+        candidate_df = df.head(800)
+        resume_skill_set = {s.lower().strip() for s in request.resume_skills if str(s).strip()}
+        if not resume_skill_set:
+            raise HTTPException(status_code=400, detail="No valid resume skills found")
+
+        market_demand, _ = _resolve_market_demand(
+            role=request.role,
+            company=request.company,
+            region=request.region,
+            top_n=100,
+        )
+        market_demand_norm = {k.lower(): int(v) for k, v in market_demand.items()}
+
+        scored_jobs = []
+        for _, row in candidate_df.iterrows():
+            title = str(row.get("title") or "").strip()
+            company = str(row.get("company") or "").strip()
+            location = str(row.get("location") or "").strip()
+            role = str(row.get("role") or "").strip()
+            url = str(row.get("url") or "").strip()
+            description = str(row.get("description") or "").strip()
+
+            job_skills = _parse_skills_cell(row.get("skills"))
+            if not job_skills:
+                text_for_extraction = f"{title} {description}".strip()
+                if text_for_extraction:
+                    extracted = extract_skills_with_fallback(text_for_extraction)
+                    job_skills = list(extracted.keys())
+
+            fit_score, matched_skills, missing_skills = _score_job_for_resume(
+                resume_skill_set=resume_skill_set,
+                job_skills=job_skills,
+            )
+
+            if fit_score <= 0 or not matched_skills:
+                continue
+
+            demand_alignment = sum(market_demand_norm.get(skill.lower(), 0) for skill in matched_skills)
+
+            scored_jobs.append(
+                {
+                    "title": title or "Unknown title",
+                    "company": company or "Unknown company",
+                    "location": location or "Unknown location",
+                    "role": role,
+                    "url": url,
+                    "fit_score": fit_score,
+                    "matched_skills": matched_skills,
+                    "missing_skills": missing_skills[:8],
+                    "matched_count": len(matched_skills),
+                    "job_skill_count": len(job_skills),
+                    "demand_alignment": demand_alignment,
+                    "source": str(row.get("source") or ""),
+                }
+            )
+
+        scored_jobs.sort(
+            key=lambda job: (
+                int(job["fit_score"]),
+                int(job["matched_count"]),
+                int(job["demand_alignment"]),
+            ),
+            reverse=True,
+        )
+
+        limit = max(1, min(int(request.limit), 20))
+        return {
+            "jobs": scored_jobs[:limit],
+            "total": len(scored_jobs),
+            "filters": {
+                "role": request.role,
+                "company": request.company,
+                "region": request.region,
+            },
+            "source": "snapshot_ranked",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating job recommendations: {e}")
+        return {
+            "jobs": [],
+            "total": 0,
+            "filters": {
+                "role": request.role,
+                "company": request.company,
+                "region": request.region,
+            },
+            "source": "error",
+        }
+
+
 def _load_market_demand(
     role: Optional[str] = None,
     company: Optional[str] = None,
@@ -399,6 +569,67 @@ def _load_market_demand(
     except Exception as e:
         print(f"Error loading market demand snapshot: {e}")
         return {}
+
+
+def _parse_skills_cell(raw_skills: Any) -> List[str]:
+    """Parse skills stored as list, JSON string, or comma-separated text."""
+    if raw_skills is None:
+        return []
+
+    if isinstance(raw_skills, list):
+        return [str(skill).strip() for skill in raw_skills if str(skill).strip()]
+
+    if isinstance(raw_skills, tuple):
+        return [str(skill).strip() for skill in raw_skills if str(skill).strip()]
+
+    if isinstance(raw_skills, str):
+        text = raw_skills.strip()
+        if not text:
+            return []
+
+        # Try JSON or Python list literal first.
+        if text.startswith("[") and text.endswith("]"):
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    parsed = parser(text)
+                    if isinstance(parsed, list):
+                        return [str(skill).strip() for skill in parsed if str(skill).strip()]
+                except Exception:
+                    continue
+
+        return [piece.strip() for piece in text.split(",") if piece.strip()]
+
+    return []
+
+
+def _score_job_for_resume(resume_skill_set: set[str], job_skills: List[str]) -> Tuple[int, List[str], List[str]]:
+    """Compute job fit score and overlap details for resume skills vs job skills."""
+    if not job_skills:
+        return 0, [], []
+
+    cleaned_job_skills = [str(skill).strip() for skill in job_skills if str(skill).strip()]
+    if not cleaned_job_skills:
+        return 0, [], []
+
+    normalized_job = {skill.lower(): skill for skill in cleaned_job_skills}
+    matched_lowers = sorted([skill for skill in normalized_job.keys() if skill in resume_skill_set])
+    if not matched_lowers:
+        return 0, [], sorted(cleaned_job_skills)
+
+    matched_skills = [normalized_job[skill] for skill in matched_lowers]
+    missing_skills = [
+        original
+        for lower, original in normalized_job.items()
+        if lower not in resume_skill_set
+    ]
+
+    coverage_denominator = max(1, len(normalized_job))
+    coverage_score = int(round((len(matched_skills) / coverage_denominator) * 100))
+
+    # A small boost rewards absolute overlap so broad resumes rank better for multi-skill roles.
+    overlap_boost = min(15, len(matched_skills) * 3)
+    fit_score = min(100, coverage_score + overlap_boost)
+    return fit_score, matched_skills, sorted(missing_skills)
 
 
 def _resolve_market_demand(
